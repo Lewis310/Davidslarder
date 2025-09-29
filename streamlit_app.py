@@ -56,6 +56,18 @@ def load_data():
             st.error(f"Error loading data: {e}")
     return None
 
+# Helper function to create time slots (7:30 AM to 6:00 PM)
+def create_time_slots():
+    times = []
+    for hour in range(7, 19):  # 7 AM to 6 PM
+        for minute in [0, 30]:
+            # Skip times before 7:30 AM
+            if hour == 7 and minute == 0:
+                continue
+            time_str = f"{hour:02d}:{minute:02d}"
+            times.append(time_str)
+    return times
+
 # Initialize session state with persisted data
 def initialize_session_state():
     """Initialize session state with saved data or defaults"""
@@ -245,15 +257,6 @@ def update_timetable(week_key, day, time_slot, worker_id, action='add'):
     
     save_data()
 
-# Helper function to create time slots
-def create_time_slots():
-    times = []
-    for hour in range(6, 23):  # 6 AM to 10 PM
-        for minute in [0, 30]:
-            time_str = f"{hour:02d}:{minute:02d}"
-            times.append(time_str)
-    return times
-
 # Main title
 st.title("🥩 David's Larder - Management System")
 
@@ -283,7 +286,7 @@ if page == "Timetable & Rostering":
     week_dates = [start_of_week + timedelta(days=i) for i in range(7)]
     days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
     
-    # Time slots
+    # Time slots (7:30 AM to 6:00 PM)
     time_slots = create_time_slots()
     
     # Create weekly timetable
@@ -314,7 +317,7 @@ if page == "Timetable & Rostering":
         timetable_data.append(row)
     
     df = pd.DataFrame(timetable_data)
-    st.dataframe(df, use_container_width=True, height=800)
+    st.dataframe(df, use_container_width=True, height=600)
     
     # Shift assignment interface
     st.subheader("Assign Shifts")
@@ -327,9 +330,9 @@ if page == "Timetable & Rostering":
         selected_worker = st.selectbox("Worker", 
                                      [f"{w['name']} ({w['position']})" for w in st.session_state.workers])
     with col3:
-        start_time = st.selectbox("Start Time", time_slots, index=16)  # Default to 9:00
+        start_time = st.selectbox("Start Time", time_slots, index=0)  # Default to 7:30 AM
     with col4:
-        end_time = st.selectbox("End Time", time_slots, index=22)  # Default to 12:00
+        end_time = st.selectbox("End Time", time_slots, index=len(time_slots)-1)  # Default to 6:00 PM
     
     if st.button("Assign Shift"):
         if selected_worker and start_time and end_time:
@@ -398,7 +401,7 @@ elif page == "Worker Management":
                     remove_worker(worker['id'])
                     st.rerun()
 
-# FIXED Order Management Page
+# Order Management Page
 elif page == "Order Management":
     st.header("📋 Order Management")
     
@@ -477,7 +480,6 @@ elif page == "Order Management":
                 with col1:
                     st.write(f"**Customer:** {order['customer_name']}")
                     st.write(f"**Due Date:** {order['due_date'].strftime('%A, %d %b %Y')}")
-                    st.write(f"**Status:** {status_text}")
                     st.markdown(f"<span style='color: {status_color}'><strong>{status_text}</strong></span>", 
                               unsafe_allow_html=True)
                 
@@ -596,7 +598,7 @@ elif page == "New Order":
                 - **Status:** Pending
                 """)
 
-# Shop Jobs Page (unchanged from previous)
+# Shop Jobs Page
 elif page == "Shop Jobs":
     st.header("🏪 Daily Shop Jobs & Tasks")
     
