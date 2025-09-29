@@ -1,9 +1,8 @@
-
-from openai import OpenAI
 import streamlit as st
 import pandas as pd
 import datetime
 import json
+import os
 from datetime import datetime, timedelta
 import uuid
 
@@ -14,130 +13,179 @@ st.set_page_config(
     layout="wide"
 )
 
-# Initialize session state
-if 'workers' not in st.session_state:
-    st.session_state.workers = [
-        {
-            'id': 1,
-            'name': 'John MacLeod',
-            'position': 'Butcher',
-            'availability': ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
-            'unavailable_dates': [],
-            'hours_per_week': 40
-        },
-        {
-            'id': 2,
-            'name': 'Sarah Campbell',
-            'position': 'Shop Assistant',
-            'availability': ['Tuesday', 'Wednesday', 'Thursday', 'Saturday'],
-            'unavailable_dates': [],
-            'hours_per_week': 30
-        },
-        {
-            'id': 3,
-            'name': 'Michael Fraser',
-            'position': 'Butcher',
-            'availability': ['Monday', 'Wednesday', 'Friday', 'Saturday'],
-            'unavailable_dates': [],
-            'hours_per_week': 35
+# Data persistence functions
+def save_data():
+    """Save all session data to JSON file"""
+    try:
+        data = {
+            'workers': st.session_state.workers,
+            'orders': [
+                {
+                    **order,
+                    'due_date': order['due_date'].isoformat() if isinstance(order['due_date'], datetime) else order['due_date']
+                }
+                for order in st.session_state.orders
+            ],
+            'timetable': st.session_state.timetable,
+            'shop_jobs': st.session_state.shop_jobs,
+            'job_descriptions': st.session_state.job_descriptions
         }
-    ]
+        with open('davids_larder_data.json', 'w') as f:
+            json.dump(data, f)
+        return True
+    except Exception as e:
+        st.error(f"Error saving data: {e}")
+        return False
 
-if 'orders' not in st.session_state:
-    st.session_state.orders = [
-        {
-            'order_id': 'ORD001',
-            'customer_name': 'Highland Hotel',
-            'items': ['10kg Pork Shoulder', '5kg Beef Mince', '3 Whole Chickens'],
-            'due_date': datetime.now() + timedelta(days=2),
-            'status': 'Pending'
+def load_data():
+    """Load data from JSON file"""
+    if os.path.exists('davids_larder_data.json'):
+        try:
+            with open('davids_larder_data.json', 'r') as f:
+                data = json.load(f)
+            
+            # Convert date strings back to datetime objects
+            for order in data.get('orders', []):
+                if 'due_date' in order and isinstance(order['due_date'], str):
+                    order['due_date'] = datetime.fromisoformat(order['due_date'])
+            
+            return data
+        except Exception as e:
+            st.error(f"Error loading data: {e}")
+    return None
+
+# Initialize session state with persisted data
+def initialize_session_state():
+    """Initialize session state with saved data or defaults"""
+    defaults = {
+        'workers': [
+            {
+                'id': 1,
+                'name': 'John MacLeod',
+                'position': 'Butcher',
+                'availability': ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
+                'unavailable_dates': [],
+                'hours_per_week': 40,
+                'skills': ['meat_cutting', 'customer_service', 'ordering']
+            },
+            {
+                'id': 2,
+                'name': 'Sarah Campbell',
+                'position': 'Shop Assistant',
+                'availability': ['Tuesday', 'Wednesday', 'Thursday', 'Saturday'],
+                'unavailable_dates': [],
+                'hours_per_week': 30,
+                'skills': ['customer_service', 'packaging', 'cleaning']
+            }
+        ],
+        'orders': [
+            {
+                'order_id': 'ORD001',
+                'customer_name': 'Highland Hotel',
+                'items': ['10kg Pork Shoulder', '5kg Beef Mince', '3 Whole Chickens'],
+                'due_date': datetime.now() + timedelta(days=2),
+                'status': 'Pending'
+            }
+        ],
+        'timetable': {},
+        'shop_jobs': {
+            'Monday': {
+                'morning': ['meat_preparation', 'display_setup', 'order_receiving'],
+                'afternoon': ['customer_service', 'cleaning', 'inventory_check'],
+                'evening': ['closing_duties', 'equipment_cleaning']
+            },
+            # ... (rest of your default shop_jobs)
         },
-        {
-            'order_id': 'ORD002',
-            'customer_name': 'Local Cafe',
-            'items': ['15kg Sausages', '8kg Bacon'],
-            'due_date': datetime.now() + timedelta(days=5),
-            'status': 'Pending'
+        'job_descriptions': {
+            'meat_preparation': 'Preparing daily meat cuts and portions for display',
+            # ... (rest of your default job_descriptions)
         }
-    ]
+    }
+    
+    # Load saved data or use defaults
+    saved_data = load_data()
+    
+    for key, default_value in defaults.items():
+        if key not in st.session_state:
+            if saved_data and key in saved_data:
+                st.session_state[key] = saved_data[key]
+            else:
+                st.session_state[key] = default_value
 
-if 'timetable' not in st.session_state:
-    st.session_state.timetable = {}
+# Initialize the session state
+initialize_session_state()
+
+# Enhanced functions with auto-save
+def add_worker(worker_data):
+    st.session_state.workers.append(worker_data)
+    save_data()
+
+def remove_worker(worker_id):
+    st.session_state.workers = [w for w in st.session_state.workers if w['id'] != worker_id]
+    save_data()
+
+def add_order(order_data):
+    st.session_state.orders.append(order_data)
+    save_data()
+
+def update_order_status(order_id, status):
+    for order in st.session_state.orders:
+        if order['order_id'] == order_id:
+            order['status'] = status
+            break
+    save_data()
+
+def remove_order(order_id):
+    st.session_state.orders = [o for o in st.session_state.orders if o['order_id'] != order_id]
+    save_data()
+
+def update_timetable(week_key, day, time_slot, worker_id, action='add'):
+    if week_key not in st.session_state.timetable:
+        st.session_state.timetable[week_key] = {}
+    if day not in st.session_state.timetable[week_key]:
+        st.session_state.timetable[week_key][day] = {}
+    if time_slot not in st.session_state.timetable[week_key][day]:
+        st.session_state.timetable[week_key][day][time_slot] = []
+    
+    if action == 'add':
+        if worker_id not in st.session_state.timetable[week_key][day][time_slot]:
+            st.session_state.timetable[week_key][day][time_slot].append(worker_id)
+    elif action == 'remove':
+        if worker_id in st.session_state.timetable[week_key][day][time_slot]:
+            st.session_state.timetable[week_key][day][time_slot].remove(worker_id)
+    
+    save_data()
+
+# Add manual save button in sidebar
+def add_save_button():
+    st.sidebar.markdown("---")
+    if st.sidebar.button("💾 Save All Data"):
+        if save_data():
+            st.sidebar.success("Data saved successfully!")
+        else:
+            st.sidebar.error("Failed to save data")
+
+# Rest of your existing UI code goes here...
+# (Timetable, Worker Management, Order Management, Shop Jobs pages)
 
 # Main title
 st.title("🥩 David's Larder - Management System")
 
 # Sidebar for navigation
 st.sidebar.title("Navigation")
-page = st.sidebar.radio("Go to", ["Timetable & Rostering", "Worker Management", "Order Management", "New Order"])
+page = st.sidebar.radio("Go to", ["Timetable & Rostering", "Worker Management", "Order Management", "New Order", "Shop Jobs"])
 
-# Timetable & Rostering Page
-if page == "Timetable & Rostering":
-    st.header("📅 Timetable & Worker Rostering")
-    
-    # Date selection
-    col1, col2 = st.columns(2)
-    with col1:
-        start_date = st.date_input("Start Date", datetime.now())
-    with col2:
-        end_date = st.date_input("End Date", datetime.now() + timedelta(days=6))
-    
-    # Generate timetable for the selected period
-    if st.button("Generate Timetable"):
-        current_date = start_date
-        while current_date <= end_date:
-            day_name = current_date.strftime('%A')
-            if day_name not in st.session_state.timetable:
-                st.session_state.timetable[day_name] = []
-            current_date += timedelta(days=1)
-    
-    # Display timetable
-    st.subheader("Weekly Timetable")
-    
-    # Create columns for each day
-    days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-    cols = st.columns(7)
-    
-    for i, day in enumerate(days):
-        with cols[i]:
-            st.write(f"**{day}**")
-            if day in st.session_state.timetable:
-                for worker_id in st.session_state.timetable[day]:
-                    worker = next((w for w in st.session_state.workers if w['id'] == worker_id), None)
-                    if worker:
-                        st.write(f"• {worker['name']}")
-            
-            # Add worker to this day
-            available_workers = [w for w in st.session_state.workers if day in w['availability']]
-            worker_names = [f"{w['name']} ({w['position']})" for w in available_workers]
-            
-            if worker_names:
-                selected_worker = st.selectbox(f"Add worker to {day}", [""] + worker_names, key=f"add_{day}")
-                if selected_worker:
-                    worker_name = selected_worker.split(" (")[0]
-                    worker = next((w for w in available_workers if w['name'] == worker_name), None)
-                    if worker and worker['id'] not in st.session_state.timetable.get(day, []):
-                        if day not in st.session_state.timetable:
-                            st.session_state.timetable[day] = []
-                        st.session_state.timetable[day].append(worker['id'])
-                        st.rerun()
+# Add save button to sidebar
+add_save_button()
 
-# Worker Management Page
-elif page == "Worker Management":
+# In your existing code, replace direct session_state modifications with the new functions:
+# Example in Worker Management page:
+if page == "Worker Management":
     st.header("👥 Worker Management")
     
-    # Add new worker
-    st.subheader("Add New Worker")
+    # Add new worker - MODIFIED TO USE PERSISTENT FUNCTION
     with st.form("add_worker"):
-        col1, col2 = st.columns(2)
-        with col1:
-            new_name = st.text_input("Full Name")
-            new_position = st.selectbox("Position", ["Butcher", "Shop Assistant", "Manager", "Cleaner"])
-        with col2:
-            availability = st.multiselect("Availability", 
-                                        ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'])
-            hours = st.number_input("Hours per Week", min_value=10, max_value=60, value=40)
-        
+        # ... your form fields
         if st.form_submit_button("Add Worker"):
             if new_name:
                 new_worker = {
@@ -146,117 +194,17 @@ elif page == "Worker Management":
                     'position': new_position,
                     'availability': availability,
                     'unavailable_dates': [],
-                    'hours_per_week': hours
+                    'hours_per_week': hours,
+                    'skills': selected_skills
                 }
-                st.session_state.workers.append(new_worker)
+                add_worker(new_worker)  # This now auto-saves
                 st.success(f"Added {new_name} to workers!")
     
-    # Display current workers
-    st.subheader("Current Workers")
+    # Remove worker - MODIFIED TO USE PERSISTENT FUNCTION
     for worker in st.session_state.workers:
         with st.expander(f"{worker['name']} - {worker['position']}"):
-            col1, col2 = st.columns(2)
-            with col1:
-                st.write(f"**Availability:** {', '.join(worker['availability'])}")
-                st.write(f"**Hours/Week:** {worker['hours_per_week']}")
-            with col2:
-                if st.button(f"Remove {worker['name']}", key=f"remove_{worker['id']}"):
-                    st.session_state.workers = [w for w in st.session_state.workers if w['id'] != worker['id']]
-                    st.rerun()
-
-# Order Management Page
-elif page == "Order Management":
-    st.header("📋 Order Management")
-    
-    # Sort orders by due date
-    sorted_orders = sorted(st.session_state.orders, key=lambda x: x['due_date'])
-    
-    # Display orders
-    for order in sorted_orders:
-        days_until = (order['due_date'] - datetime.now()).days
-        status_color = "🟡" if order['status'] == 'Pending' else "🟢"
-        
-        with st.expander(f"{status_color} Order {order['order_id']} - {order['customer_name']} (Due in {days_until} days)"):
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.write(f"**Customer:** {order['customer_name']}")
-                st.write(f"**Due Date:** {order['due_date'].strftime('%Y-%m-%d')}")
-            with col2:
-                st.write("**Items:**")
-                for item in order['items']:
-                    st.write(f"• {item}")
-            with col3:
-                st.write(f"**Status:** {order['status']}")
-                if st.button(f"Mark Complete", key=f"complete_{order['order_id']}"):
-                    order['status'] = 'Completed'
-                    st.rerun()
-                if st.button(f"Delete Order", key=f"delete_{order['order_id']}"):
-                    st.session_state.orders = [o for o in st.session_state.orders if o['order_id'] != order['order_id']]
-                    st.rerun()
-
-# New Order Page
-elif page == "New Order":
-    st.header("🛒 New Customer Order")
-    
-    with st.form("new_order"):
-        col1, col2 = st.columns(2)
-        with col1:
-            customer_name = st.text_input("Customer Name")
-            due_date = st.date_input("Due Date", datetime.now() + timedelta(days=7))
-        with col2:
-            order_id = st.text_input("Order ID", value=f"ORD{len(st.session_state.orders) + 1:03d}")
-        
-        st.subheader("Order Items")
-        items = st.text_area("Items (one per line)", 
-                           placeholder="e.g., 5kg Beef Mince\n3 Whole Chickens\n2kg Pork Sausages")
-        
-        if st.form_submit_button("Create Order"):
-            if customer_name and items:
-                new_order = {
-                    'order_id': order_id,
-                    'customer_name': customer_name,
-                    'items': [item.strip() for item in items.split('\n') if item.strip()],
-                    'due_date': datetime.combine(due_date, datetime.min.time()),
-                    'status': 'Pending'
-                }
-                st.session_state.orders.append(new_order)
-                st.success(f"Order {order_id} created for {customer_name}!")
-                
-                # Clear form
+            if st.button(f"Remove {worker['name']}", key=f"remove_{worker['id']}"):
+                remove_worker(worker['id'])  # This now auto-saves
                 st.rerun()
 
-# LLM Chat Bot Section
-st.sidebar.markdown("---")
-st.sidebar.header("💬 David's Larder Assistant")
-
-# Simple chat interface
-user_input = st.sidebar.text_input("Ask about workers, timetables, or orders:")
-
-if user_input:
-    # Simple response logic - in a real app, you'd integrate with an actual LLM
-    user_input_lower = user_input.lower()
-    
-    if any(word in user_input_lower for word in ['worker', 'staff', 'employee']):
-        worker_names = [worker['name'] for worker in st.session_state.workers]
-        st.sidebar.write(f"**Assistant:** We have {len(worker_names)} workers: {', '.join(worker_names)}")
-    
-    elif any(word in user_input_lower for word in ['timetable', 'roster', 'schedule']):
-        st.sidebar.write("**Assistant:** You can view and manage the timetable in the 'Timetable & Rostering' section. I can help assign workers based on their availability.")
-    
-    elif any(word in user_input_lower for word in ['order', 'delivery']):
-        pending_orders = [o for o in st.session_state.orders if o['status'] == 'Pending']
-        st.sidebar.write(f"**Assistant:** We have {len(pending_orders)} pending orders. The next order is {pending_orders[0]['order_id']} for {pending_orders[0]['customer_name']}.")
-    
-    else:
-        st.sidebar.write("**Assistant:** I can help you with worker management, timetables, and orders. Try asking about specific workers, the schedule, or upcoming orders.")
-
-# Quick stats in sidebar
-st.sidebar.markdown("---")
-st.sidebar.subheader("Quick Stats")
-st.sidebar.write(f"**Workers:** {len(st.session_state.workers)}")
-st.sidebar.write(f"**Pending Orders:** {len([o for o in st.session_state.orders if o['status'] == 'Pending'])}")
-st.sidebar.write(f"**Days in Timetable:** {len(st.session_state.timetable)}")
-
-# Footer
-st.sidebar.markdown("---")
-st.sidebar.markdown("🥩 **David's Larder** - Scottish Butcher Shop")
+# Similarly update all other pages to use the persistent functions
