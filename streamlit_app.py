@@ -301,7 +301,7 @@ if page == "Timetable & Rostering":
             for time_slot in time_slots:
                 st.session_state.timetable[week_key][day][time_slot] = []
     
-    # Display timetable as a grid
+    # Display timetable as a grid - FIXED: Only show our defined time slots
     timetable_data = []
     for time_slot in time_slots:
         row = {'Time': time_slot}
@@ -318,6 +318,28 @@ if page == "Timetable & Rostering":
     
     df = pd.DataFrame(timetable_data)
     st.dataframe(df, use_container_width=True, height=600)
+    
+    # Display assigned shifts in a more readable format
+    st.subheader("Assigned Shifts Summary")
+    for day in days:
+        day_shifts = {}
+        for time_slot in time_slots:
+            workers = st.session_state.timetable[week_key][day].get(time_slot, [])
+            for worker_id in workers:
+                worker = next((w for w in st.session_state.workers if w['id'] == worker_id), None)
+                if worker:
+                    if worker['name'] not in day_shifts:
+                        day_shifts[worker['name']] = []
+                    day_shifts[worker['name']].append(time_slot)
+        
+        if day_shifts:
+            with st.expander(f"{day} - {week_dates[days.index(day)].strftime('%d/%m')}"):
+                for worker_name, slots in day_shifts.items():
+                    if slots:
+                        # Group consecutive time slots
+                        start_time = slots[0]
+                        end_time = slots[-1]
+                        st.write(f"**{worker_name}:** {start_time} - {end_time}")
     
     # Shift assignment interface
     st.subheader("Assign Shifts")
