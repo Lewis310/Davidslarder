@@ -315,95 +315,228 @@ def remove_shift(week_key, day, worker_id):
                 st.session_state.timetable[week_key][day][time_slot].remove(worker_id)
         save_data()
 
-# Visual timetable functions
-def create_visual_timetable(week_key, days, time_slots, week_dates):
-    """Create a visual timetable with colored blocks"""
-    st.subheader("📊 Weekly Timetable")
+# Google Calendar-style timetable functions
+def create_google_calendar_timetable(week_key, days, time_slots, week_dates):
+    """Create a Google Calendar-style timetable"""
+    st.subheader("📅 Weekly Schedule - Google Calendar Style")
     
-    # Create a container for the timetable
-    timetable_container = st.container()
+    # Create the calendar header
+    st.markdown("""
+    <style>
+    .calendar-container {
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        overflow: hidden;
+        margin-bottom: 20px;
+    }
+    .calendar-header {
+        display: grid;
+        grid-template-columns: 80px repeat(7, 1fr);
+        background-color: #f8f9fa;
+        border-bottom: 1px solid #e0e0e0;
+        font-weight: bold;
+    }
+    .calendar-time-column {
+        background-color: #f8f9fa;
+        border-right: 1px solid #e0e0e0;
+    }
+    .calendar-day-header {
+        padding: 10px;
+        text-align: center;
+        border-right: 1px solid #e0e0e0;
+    }
+    .calendar-day-header:last-child {
+        border-right: none;
+    }
+    .calendar-time-slot {
+        height: 40px;
+        border-bottom: 1px solid #f0f0f0;
+        display: flex;
+        align-items: center;
+        padding-left: 10px;
+        font-size: 12px;
+        color: #666;
+    }
+    .calendar-cell {
+        border-right: 1px solid #f0f0f0;
+        border-bottom: 1px solid #f0f0f0;
+        min-height: 40px;
+        position: relative;
+    }
+    .calendar-cell:last-child {
+        border-right: none;
+    }
+    .calendar-event {
+        position: absolute;
+        left: 2px;
+        right: 2px;
+        border-radius: 4px;
+        padding: 2px 4px;
+        font-size: 10px;
+        font-weight: bold;
+        color: black;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+        cursor: pointer;
+        z-index: 1;
+    }
+    .calendar-event:hover {
+        opacity: 0.9;
+    }
+    .calendar-grid {
+        display: grid;
+        grid-template-columns: 80px repeat(7, 1fr);
+        max-height: 600px;
+        overflow-y: auto;
+    }
+    </style>
+    """, unsafe_allow_html=True)
     
-    with timetable_container:
-        # Create columns for each day
-        cols = st.columns(len(days))
+    # Get all shifts for the week
+    week_shifts = {}
+    for day in days:
+        day_shifts = {}
+        for time_slot in time_slots:
+            workers = st.session_state.timetable[week_key][day].get(time_slot, [])
+            for worker_id in workers:
+                if worker_id not in day_shifts:
+                    day_shifts[worker_id] = []
+                day_shifts[worker_id].append(time_slot)
+        week_shifts[day] = day_shifts
+    
+    # Create calendar HTML
+    calendar_html = """
+    <div class="calendar-container">
+        <div class="calendar-header">
+            <div class="calendar-time-column"></div>
+    """
+    
+    # Add day headers
+    for i, day in enumerate(days):
+        date_str = week_dates[i].strftime('%d/%m')
+        calendar_html += f'<div class="calendar-day-header">{day}<br><small>{date_str}</small></div>'
+    
+    calendar_html += "</div><div class='calendar-grid'>"
+    
+    # Add time slots and events
+    for time_slot in time_slots:
+        # Time column
+        calendar_html += f'<div class="calendar-time-slot">{time_slot}</div>'
         
-        for i, (day, col) in enumerate(zip(days, cols)):
-            with col:
-                date_str = week_dates[i].strftime('%d/%m')
-                st.write(f"**{day}**")
-                st.write(f"*{date_str}*")
-                
-                # Get all shifts for this day
-                day_shifts = {}
-                for time_slot in time_slots:
-                    workers = st.session_state.timetable[week_key][day].get(time_slot, [])
-                    for worker_id in workers:
-                        if worker_id not in day_shifts:
-                            day_shifts[worker_id] = []
-                        day_shifts[worker_id].append(time_slot)
-                
-                # Group consecutive time slots into shifts
-                shifts_by_worker = {}
-                for worker_id, slots in day_shifts.items():
-                    if slots:
-                        slots.sort()
-                        shifts = []
-                        current_shift = [slots[0]]
-                        
-                        for j in range(1, len(slots)):
-                            current_time = datetime.strptime(slots[j], '%H:%M')
-                            prev_time = datetime.strptime(slots[j-1], '%H:%M')
-                            # If times are consecutive (30 min difference)
-                            if (current_time - prev_time).seconds == 1800:  # 30 minutes in seconds
-                                current_shift.append(slots[j])
-                            else:
-                                shifts.append(current_shift)
-                                current_shift = [slots[j]]
-                        
-                        shifts.append(current_shift)
-                        shifts_by_worker[worker_id] = shifts
-                
-                # Display shifts as colored blocks
-                if shifts_by_worker:
-                    for worker_id, shifts in shifts_by_worker.items():
-                        worker = next((w for w in st.session_state.workers if w['id'] == worker_id), None)
-                        if worker:
-                            color = st.session_state.worker_colors.get(worker_id, '#CCCCCC')
-                            for shift in shifts:
-                                if len(shift) > 1:
-                                    shift_text = f"{shift[0]} - {shift[-1]}"
-                                else:
-                                    shift_text = f"{shift[0]}"
+        # Day columns
+        for day in days:
+            calendar_html += '<div class="calendar-cell">'
+            
+            # Find events for this time slot
+            current_workers = st.session_state.timetable[week_key][day].get(time_slot, [])
+            
+            # Only show event if this is the start of a shift
+            if current_workers:
+                # Check if this is the start of a shift (previous slot doesn't have this worker)
+                for worker_id in current_workers:
+                    prev_slot_idx = time_slots.index(time_slot) - 1
+                    if prev_slot_idx >= 0:
+                        prev_slot = time_slots[prev_slot_idx]
+                        prev_workers = st.session_state.timetable[week_key][day].get(prev_slot, [])
+                        if worker_id not in prev_workers:
+                            # This is the start of a shift, create event
+                            worker = next((w for w in st.session_state.workers if w['id'] == worker_id), None)
+                            if worker:
+                                color = st.session_state.worker_colors.get(worker_id, '#CCCCCC')
                                 
-                                # Create a colored block with remove button
-                                col1, col2 = st.columns([4, 1])
-                                with col1:
-                                    st.markdown(
-                                        f"""<div style="background-color: {color}; 
-                                        padding: 8px; margin: 2px 0; border-radius: 4px; 
-                                        color: black; font-weight: bold; font-size: 12px;">
-                                        {worker['name']}<br>{shift_text}
-                                        </div>""", 
-                                        unsafe_allow_html=True
-                                    )
-                                with col2:
-                                    if st.button("❌", key=f"remove_{day}_{worker_id}_{shift[0]}", help=f"Remove {worker['name']}'s shift"):
-                                        # Remove this specific shift
-                                        for time_slot in shift:
-                                            update_timetable(week_key, day, time_slot, worker_id, 'remove')
-                                        st.rerun()
-                else:
-                    st.info("No shifts")
-                
-                # Add quick remove all for this worker on this day
-                if shifts_by_worker:
-                    st.markdown("---")
-                    for worker_id in shifts_by_worker.keys():
-                        worker = next((w for w in st.session_state.workers if w['id'] == worker_id), None)
-                        if worker:
-                            if st.button(f"Remove all {worker['name']}'s shifts", key=f"remove_all_{day}_{worker_id}"):
-                                remove_shift(week_key, day, worker_id)
-                                st.rerun()
+                                # Calculate shift duration
+                                shift_duration = 1
+                                for next_slot_idx in range(time_slots.index(time_slot) + 1, len(time_slots)):
+                                    next_slot = time_slots[next_slot_idx]
+                                    if worker_id in st.session_state.timetable[week_key][day].get(next_slot, []):
+                                        shift_duration += 1
+                                    else:
+                                        break
+                                
+                                # Calculate event height and position
+                                event_height = min(shift_duration * 40, 40 * 6)  # Max 6 slots high
+                                calendar_html += f'''
+                                <div class="calendar-event" style="background-color: {color}; height: {event_height}px; top: 0px;">
+                                    {worker['name']}<br>
+                                    <small>{time_slot}</small>
+                                </div>
+                                '''
+            
+            calendar_html += '</div>'
+    
+    calendar_html += "</div></div>"
+    
+    # Display the calendar
+    st.markdown(calendar_html, unsafe_allow_html=True)
+    
+    # Add event management below the calendar
+    st.subheader("🛠️ Shift Management")
+    
+    # Display shifts by day for easy management
+    for day in days:
+        with st.expander(f"{day} - {week_dates[days.index(day)].strftime('%d/%m')}"):
+            day_shifts = {}
+            for time_slot in time_slots:
+                workers = st.session_state.timetable[week_key][day].get(time_slot, [])
+                for worker_id in workers:
+                    if worker_id not in day_shifts:
+                        day_shifts[worker_id] = []
+                    day_shifts[worker_id].append(time_slot)
+            
+            # Group consecutive time slots
+            shifts_by_worker = {}
+            for worker_id, slots in day_shifts.items():
+                if slots:
+                    slots.sort()
+                    shifts = []
+                    current_shift = [slots[0]]
+                    
+                    for j in range(1, len(slots)):
+                        current_time = datetime.strptime(slots[j], '%H:%M')
+                        prev_time = datetime.strptime(slots[j-1], '%H:%M')
+                        if (current_time - prev_time).seconds == 1800:
+                            current_shift.append(slots[j])
+                        else:
+                            shifts.append(current_shift)
+                            current_shift = [slots[j]]
+                    
+                    shifts.append(current_shift)
+                    shifts_by_worker[worker_id] = shifts
+            
+            if shifts_by_worker:
+                for worker_id, shifts in shifts_by_worker.items():
+                    worker = next((w for w in st.session_state.workers if w['id'] == worker_id), None)
+                    if worker:
+                        color = st.session_state.worker_colors.get(worker_id, '#CCCCCC')
+                        st.markdown(f"**{worker['name']}**")
+                        for shift in shifts:
+                            if len(shift) > 1:
+                                shift_text = f"{shift[0]} - {shift[-1]}"
+                            else:
+                                shift_text = f"{shift[0]}"
+                            
+                            col1, col2 = st.columns([3, 1])
+                            with col1:
+                                st.markdown(
+                                    f"""<div style="background-color: {color}; padding: 5px; margin: 2px 0; 
+                                    border-radius: 3px; color: black; font-size: 12px;">
+                                    {shift_text}
+                                    </div>""", 
+                                    unsafe_allow_html=True
+                                )
+                            with col2:
+                                if st.button("❌", key=f"remove_{day}_{worker_id}_{shift[0]}", help=f"Remove this shift"):
+                                    for time_slot in shift:
+                                        update_timetable(week_key, day, time_slot, worker_id, 'remove')
+                                    st.rerun()
+                        
+                        if st.button(f"Remove all {worker['name']}'s shifts on {day}", key=f"remove_all_{day}_{worker_id}"):
+                            remove_shift(week_key, day, worker_id)
+                            st.rerun()
+                        st.markdown("---")
+            else:
+                st.info("No shifts scheduled")
 
 # Main title
 st.title("🥩 David's Larder - Management System")
@@ -455,8 +588,8 @@ if page == "Timetable & Rostering":
             for time_slot in time_slots:
                 st.session_state.timetable[week_key][day][time_slot] = []
     
-    # Create visual timetable
-    create_visual_timetable(week_key, days, time_slots, week_dates)
+    # Create Google Calendar-style timetable
+    create_google_calendar_timetable(week_key, days, time_slots, week_dates)
     
     # Shift assignment interface
     st.subheader("➕ Assign New Shifts")
@@ -491,7 +624,7 @@ if page == "Timetable & Rostering":
                 st.success(f"Assigned {worker_name} to {selected_day} from {start_time} to {end_time}")
                 st.rerun()
 
-# Worker Management Page
+# Worker Management Page (same as before)
 elif page == "Worker Management":
     st.header("👥 Worker Management")
     
@@ -554,7 +687,7 @@ elif page == "Worker Management":
                     remove_worker(worker['id'])
                     st.rerun()
 
-# Order Management Page
+# Order Management Page (same as before)
 elif page == "Order Management":
     st.header("📋 Order Management")
     
@@ -699,7 +832,7 @@ elif page == "Order Management":
             high_priority = len([o for o in st.session_state.orders if o.get('priority') == 'High' and o['status'] in ['Pending', 'In Progress']])
             st.metric("High Priority", high_priority)
 
-# New Order Page
+# New Order Page (same as before)
 elif page == "New Order":
     st.header("🛒 New Customer Order")
     
@@ -751,7 +884,7 @@ elif page == "New Order":
                 - **Status:** Pending
                 """)
 
-# Shop Jobs Page
+# Shop Jobs Page (same as before)
 elif page == "Shop Jobs":
     st.header("🏪 Daily Shop Jobs & Tasks")
     
