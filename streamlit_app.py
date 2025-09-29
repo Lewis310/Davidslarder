@@ -4,6 +4,7 @@ import datetime
 import json
 from datetime import datetime, timedelta
 import uuid
+import random
 
 # Page configuration
 st.set_page_config(
@@ -22,7 +23,8 @@ if 'workers' not in st.session_state:
             'availability': ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
             'unavailable_dates': [],
             'hours_per_week': 40,
-            'skills': ['meat_cutting', 'customer_service', 'ordering']
+            'skills': ['meat_cutting', 'customer_service', 'ordering'],
+            'color': '#FF6B6B'  # Red
         },
         {
             'id': 2,
@@ -31,7 +33,8 @@ if 'workers' not in st.session_state:
             'availability': ['Tuesday', 'Wednesday', 'Thursday', 'Saturday'],
             'unavailable_dates': [],
             'hours_per_week': 30,
-            'skills': ['customer_service', 'packaging', 'cleaning']
+            'skills': ['customer_service', 'packaging', 'cleaning'],
+            'color': '#4ECDC4'  # Teal
         },
         {
             'id': 3,
@@ -40,7 +43,18 @@ if 'workers' not in st.session_state:
             'availability': ['Monday', 'Wednesday', 'Friday', 'Saturday'],
             'unavailable_dates': [],
             'hours_per_week': 35,
-            'skills': ['meat_cutting', 'preparation', 'quality_control']
+            'skills': ['meat_cutting', 'preparation', 'quality_control'],
+            'color': '#45B7D1'  # Blue
+        },
+        {
+            'id': 4,
+            'name': 'Emma Wilson',
+            'position': 'Shop Assistant',
+            'availability': ['Monday', 'Tuesday', 'Friday', 'Saturday'],
+            'unavailable_dates': [],
+            'hours_per_week': 25,
+            'skills': ['customer_service', 'cash_handling', 'cleaning'],
+            'color': '#96CEB4'  # Green
         }
     ]
 
@@ -49,16 +63,52 @@ if 'orders' not in st.session_state:
         {
             'order_id': 'ORD001',
             'customer_name': 'Highland Hotel',
-            'items': ['10kg Pork Shoulder', '5kg Beef Mince', '3 Whole Chickens'],
+            'customer_contact': '01463 123456',
+            'customer_email': 'manager@highlandhotel.com',
+            'items': [
+                {'name': 'Pork Shoulder', 'quantity': 10, 'unit': 'kg', 'notes': 'Boneless'},
+                {'name': 'Beef Mince', 'quantity': 5, 'unit': 'kg', 'notes': 'Lean'},
+                {'name': 'Whole Chickens', 'quantity': 3, 'unit': 'each', 'notes': 'Size 1.5kg each'}
+            ],
+            'total_price': 285.50,
             'due_date': datetime.now() + timedelta(days=2),
-            'status': 'Pending'
+            'status': 'Pending',
+            'priority': 'High',
+            'notes': 'Deliver to back entrance before 10 AM',
+            'created_date': datetime.now() - timedelta(days=1)
         },
         {
             'order_id': 'ORD002',
             'customer_name': 'Local Cafe',
-            'items': ['15kg Sausages', '8kg Bacon'],
+            'customer_contact': '01463 654321',
+            'customer_email': 'orders@localcafe.com',
+            'items': [
+                {'name': 'Sausages', 'quantity': 15, 'unit': 'kg', 'notes': 'Pork and herb'},
+                {'name': 'Bacon', 'quantity': 8, 'unit': 'kg', 'notes': 'Smoked back bacon'}
+            ],
+            'total_price': 192.75,
             'due_date': datetime.now() + timedelta(days=5),
-            'status': 'Pending'
+            'status': 'In Progress',
+            'priority': 'Medium',
+            'notes': 'Will collect at 8:30 AM',
+            'created_date': datetime.now() - timedelta(days=2)
+        },
+        {
+            'order_id': 'ORD003',
+            'customer_name': 'River Restaurant',
+            'customer_contact': '01463 789012',
+            'customer_email': 'chef@riverrestaurant.com',
+            'items': [
+                {'name': 'Lamb Legs', 'quantity': 4, 'unit': 'each', 'notes': 'Butterflied'},
+                {'name': 'Beef Ribeye', 'quantity': 12, 'unit': 'kg', 'notes': 'Aged 28 days'},
+                {'name': 'Chicken Breasts', 'quantity': 6, 'unit': 'kg', 'notes': 'Skinless'}
+            ],
+            'total_price': 420.00,
+            'due_date': datetime.now() + timedelta(days=1),
+            'status': 'Pending',
+            'priority': 'High',
+            'notes': 'Urgent - for weekend event',
+            'created_date': datetime.now()
         }
     ]
 
@@ -157,7 +207,16 @@ def create_time_slots():
             times.append(time_str)
     return times
 
-# Enhanced Timetable & Rostering Page
+# Helper function to generate order ID
+def generate_order_id():
+    return f"ORD{len(st.session_state.orders) + 1:03d}"
+
+# Helper function to get worker color
+def get_worker_color(worker_id):
+    worker = next((w for w in st.session_state.workers if w['id'] == worker_id), None)
+    return worker['color'] if worker and 'color' in worker else '#CCCCCC'
+
+# Enhanced Timetable & Rostering Page with color blocks
 if page == "Timetable & Rostering":
     st.header("📅 Timetable & Worker Rostering")
     
@@ -186,23 +245,41 @@ if page == "Timetable & Rostering":
             for time_slot in time_slots:
                 st.session_state.timetable[week_key][day][time_slot] = []
     
-    # Display timetable as a grid
+    # Display timetable as a grid with color blocks
     timetable_data = []
     for time_slot in time_slots:
         row = {'Time': time_slot}
         for i, day in enumerate(days):
             date_str = week_dates[i].strftime('%d/%m')
             workers_at_slot = st.session_state.timetable[week_key][day].get(time_slot, [])
-            worker_names = []
-            for worker_id in workers_at_slot:
-                worker = next((w for w in st.session_state.workers if w['id'] == worker_id), None)
-                if worker:
-                    worker_names.append(worker['name'])
-            row[f"{day} {date_str}"] = ", ".join(worker_names) if worker_names else ""
+            
+            # Create color blocks HTML
+            if workers_at_slot:
+                color_blocks = ""
+                for worker_id in workers_at_slot:
+                    color = get_worker_color(worker_id)
+                    worker = next((w for w in st.session_state.workers if w['id'] == worker_id), None)
+                    initials = ''.join([name[0] for name in worker['name'].split()]) if worker else "?"
+                    color_blocks += f'<span style="background-color: {color}; color: white; padding: 2px 6px; margin: 1px; border-radius: 3px; font-size: 0.8em;" title="{worker["name"] if worker else "Unknown"}">{initials}</span>'
+                row[f"{day} {date_str}"] = color_blocks
+            else:
+                row[f"{day} {date_str}"] = ""
         timetable_data.append(row)
     
     df = pd.DataFrame(timetable_data)
-    st.dataframe(df, use_container_width=True, height=800)
+    
+    # Display the dataframe with HTML rendering
+    st.markdown(df.to_html(escape=False, index=False), unsafe_allow_html=True)
+    
+    # Worker color legend
+    st.subheader("Worker Color Legend")
+    col_legend = st.columns(4)
+    for idx, worker in enumerate(st.session_state.workers):
+        with col_legend[idx % 4]:
+            st.markdown(
+                f'<span style="background-color: {worker["color"]}; color: white; padding: 5px 10px; border-radius: 5px; display: inline-block; margin: 2px;">{worker["name"]}</span>',
+                unsafe_allow_html=True
+            )
     
     # Shift assignment interface
     st.subheader("Assign Shifts")
@@ -238,7 +315,7 @@ if page == "Timetable & Rostering":
                 st.success(f"Assigned {worker_name} to {selected_day} from {start_time} to {end_time}")
                 st.rerun()
 
-# Worker Management Page (unchanged from previous)
+# Worker Management Page
 elif page == "Worker Management":
     st.header("👥 Worker Management")
     
@@ -259,6 +336,10 @@ elif page == "Worker Management":
                              list(st.session_state.job_descriptions.keys())))
         selected_skills = st.multiselect("Skills", all_skills)
         
+        # Color selection
+        color_options = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD', '#98D8C8', '#F7DC6F']
+        selected_color = st.selectbox("Color for Timetable", color_options)
+        
         if st.form_submit_button("Add Worker"):
             if new_name:
                 new_worker = {
@@ -268,7 +349,8 @@ elif page == "Worker Management":
                     'availability': availability,
                     'unavailable_dates': [],
                     'hours_per_week': hours,
-                    'skills': selected_skills
+                    'skills': selected_skills,
+                    'color': selected_color
                 }
                 st.session_state.workers.append(new_worker)
                 st.success(f"Added {new_name} to workers!")
@@ -277,17 +359,185 @@ elif page == "Worker Management":
     st.subheader("Current Workers")
     for worker in st.session_state.workers:
         with st.expander(f"{worker['name']} - {worker['position']}"):
-            col1, col2 = st.columns(2)
+            col1, col2, col3 = st.columns([3, 2, 1])
             with col1:
                 st.write(f"**Availability:** {', '.join(worker['availability'])}")
                 st.write(f"**Hours/Week:** {worker['hours_per_week']}")
                 st.write(f"**Skills:** {', '.join(worker.get('skills', []))}")
             with col2:
-                if st.button(f"Remove {worker['name']}", key=f"remove_{worker['id']}"):
+                st.markdown(f"**Color:** <span style='background-color: {worker['color']}; padding: 5px 10px; border-radius: 5px; color: white;'>{worker['color']}</span>", unsafe_allow_html=True)
+            with col3:
+                if st.button(f"Remove", key=f"remove_{worker['id']}"):
                     st.session_state.workers = [w for w in st.session_state.workers if w['id'] != worker['id']]
                     st.rerun()
 
-# Shop Jobs Page
+# Enhanced Order Management Page
+elif page == "Order Management":
+    st.header("📦 Order Management")
+    
+    # Order filters
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        status_filter = st.selectbox("Filter by Status", ["All", "Pending", "In Progress", "Completed", "Cancelled"])
+    with col2:
+        priority_filter = st.selectbox("Filter by Priority", ["All", "High", "Medium", "Low"])
+    with col3:
+        days_filter = st.selectbox("Due Within", ["All", "Today", "Next 2 Days", "This Week"])
+    
+    # Filter orders
+    filtered_orders = st.session_state.orders.copy()
+    
+    if status_filter != "All":
+        filtered_orders = [o for o in filtered_orders if o['status'] == status_filter]
+    
+    if priority_filter != "All":
+        filtered_orders = [o for o in filtered_orders if o['priority'] == priority_filter]
+    
+    if days_filter != "All":
+        today = datetime.now().date()
+        if days_filter == "Today":
+            filtered_orders = [o for o in filtered_orders if o['due_date'].date() == today]
+        elif days_filter == "Next 2 Days":
+            filtered_orders = [o for o in filtered_orders if o['due_date'].date() <= today + timedelta(days=2)]
+        elif days_filter == "This Week":
+            end_of_week = today + timedelta(days=(6 - today.weekday()))
+            filtered_orders = [o for o in filtered_orders if o['due_date'].date() <= end_of_week]
+    
+    # Display orders
+    st.subheader(f"Orders ({len(filtered_orders)} found)")
+    
+    for order in filtered_orders:
+        with st.expander(f"📦 {order['order_id']} - {order['customer_name']} - Due: {order['due_date'].strftime('%d/%m/%Y')}"):
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.write(f"**Customer:** {order['customer_name']}")
+                st.write(f"**Contact:** {order['customer_contact']}")
+                st.write(f"**Email:** {order['customer_email']}")
+                st.write(f"**Priority:** {order['priority']}")
+                st.write(f"**Created:** {order['created_date'].strftime('%d/%m/%Y %H:%M')}")
+                
+            with col2:
+                st.write(f"**Due Date:** {order['due_date'].strftime('%d/%m/%Y')}")
+                st.write(f"**Status:** {order['status']}")
+                st.write(f"**Total Price:** £{order['total_price']:.2f}")
+                st.write(f"**Notes:** {order.get('notes', 'None')}")
+            
+            # Order items
+            st.write("**Items:**")
+            for item in order['items']:
+                st.write(f"- {item['quantity']} {item['unit']} {item['name']} ({item.get('notes', 'No notes')})")
+            
+            # Order actions
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                new_status = st.selectbox("Update Status", 
+                                        ["Pending", "In Progress", "Completed", "Cancelled"],
+                                        index=["Pending", "In Progress", "Completed", "Cancelled"].index(order['status']),
+                                        key=f"status_{order['order_id']}")
+                if st.button("Update Status", key=f"update_{order['order_id']}"):
+                    order['status'] = new_status
+                    st.success(f"Updated {order['order_id']} status to {new_status}")
+                    st.rerun()
+            
+            with col2:
+                if st.button("Mark Complete", key=f"complete_{order['order_id']}"):
+                    order['status'] = 'Completed'
+                    st.success(f"Marked {order['order_id']} as completed")
+                    st.rerun()
+            
+            with col3:
+                if st.button("Duplicate Order", key=f"duplicate_{order['order_id']}"):
+                    new_order = order.copy()
+                    new_order['order_id'] = generate_order_id()
+                    new_order['created_date'] = datetime.now()
+                    new_order['status'] = 'Pending'
+                    st.session_state.orders.append(new_order)
+                    st.success(f"Duplicated order as {new_order['order_id']}")
+                    st.rerun()
+            
+            with col4:
+                if st.button("Delete Order", key=f"delete_{order['order_id']}"):
+                    st.session_state.orders = [o for o in st.session_state.orders if o['order_id'] != order['order_id']]
+                    st.success(f"Deleted order {order['order_id']}")
+                    st.rerun()
+
+# Enhanced New Order Page
+elif page == "New Order":
+    st.header("🆕 Create New Order")
+    
+    with st.form("new_order"):
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            customer_name = st.text_input("Customer Name*")
+            customer_contact = st.text_input("Contact Number*")
+            customer_email = st.text_input("Email Address")
+            priority = st.selectbox("Priority*", ["High", "Medium", "Low"])
+            
+        with col2:
+            due_date = st.date_input("Due Date*", datetime.now() + timedelta(days=1))
+            due_time = st.time_input("Due Time", datetime.now().time())
+            notes = st.text_area("Order Notes")
+        
+        # Order items
+        st.subheader("Order Items")
+        items = []
+        
+        with st.container():
+            st.write("Add items to the order:")
+            num_items = st.number_input("Number of Items", min_value=1, max_value=20, value=1)
+            
+            for i in range(num_items):
+                col1, col2, col3, col4 = st.columns([3, 1, 1, 2])
+                with col1:
+                    item_name = st.text_input(f"Item Name {i+1}", key=f"name_{i}")
+                with col2:
+                    quantity = st.number_input(f"Qty {i+1}", min_value=0.1, value=1.0, step=0.1, key=f"qty_{i}")
+                with col3:
+                    unit = st.selectbox(f"Unit {i+1}", ["kg", "g", "each", "pack"], key=f"unit_{i}")
+                with col4:
+                    item_notes = st.text_input(f"Notes {i+1}", key=f"notes_{i}")
+                
+                if item_name:
+                    items.append({
+                        'name': item_name,
+                        'quantity': quantity,
+                        'unit': unit,
+                        'notes': item_notes
+                    })
+        
+        if st.form_submit_button("Create Order"):
+            if customer_name and customer_contact and items:
+                # Calculate total price (simplified - in real app you'd have price lists)
+                base_price_per_kg = 15.0  # Example base price
+                total_price = sum(item['quantity'] * base_price_per_kg for item in items)
+                
+                new_order = {
+                    'order_id': generate_order_id(),
+                    'customer_name': customer_name,
+                    'customer_contact': customer_contact,
+                    'customer_email': customer_email,
+                    'items': items,
+                    'total_price': total_price,
+                    'due_date': datetime.combine(due_date, due_time),
+                    'status': 'Pending',
+                    'priority': priority,
+                    'notes': notes,
+                    'created_date': datetime.now()
+                }
+                
+                st.session_state.orders.append(new_order)
+                st.success(f"✅ Order {new_order['order_id']} created successfully!")
+                st.balloons()
+                
+                # Show order summary
+                st.subheader("Order Summary")
+                st.json(new_order)
+            else:
+                st.error("Please fill in all required fields (marked with *) and add at least one item.")
+
+# Shop Jobs Page (unchanged)
 elif page == "Shop Jobs":
     st.header("🏪 Daily Shop Jobs & Tasks")
     
@@ -341,9 +591,6 @@ elif page == "Shop Jobs":
             with st.expander(job.replace('_', ' ').title()):
                 st.write(description)
 
-# Order Management and New Order pages remain the same as previous version
-# ... (include the Order Management and New Order code from previous version here)
-
 # Enhanced LLM Chat Bot Section with shop job knowledge
 st.sidebar.markdown("---")
 st.sidebar.header("💬 David's Larder Assistant")
@@ -364,7 +611,12 @@ if user_input:
     
     elif any(word in user_input_lower for word in ['order', 'delivery']):
         pending_orders = [o for o in st.session_state.orders if o['status'] == 'Pending']
-        if pending_orders:
+        high_priority_orders = [o for o in st.session_state.orders if o['priority'] == 'High' and o['status'] != 'Completed']
+        
+        if high_priority_orders:
+            next_order = high_priority_orders[0]
+            st.sidebar.write(f"**Assistant:** We have {len(high_priority_orders)} high priority orders. Next urgent: {next_order['order_id']} for {next_order['customer_name']} due {next_order['due_date'].strftime('%A')}.")
+        elif pending_orders:
             next_order = pending_orders[0]
             st.sidebar.write(f"**Assistant:** We have {len(pending_orders)} pending orders. Next: {next_order['order_id']} for {next_order['customer_name']} due {next_order['due_date'].strftime('%A')}.")
         else:
@@ -398,6 +650,7 @@ st.sidebar.markdown("---")
 st.sidebar.subheader("Quick Stats")
 st.sidebar.write(f"**Workers:** {len(st.session_state.workers)}")
 st.sidebar.write(f"**Pending Orders:** {len([o for o in st.session_state.orders if o['status'] == 'Pending'])}")
+st.sidebar.write(f"**High Priority:** {len([o for o in st.session_state.orders if o['priority'] == 'High' and o['status'] != 'Completed'])}")
 st.sidebar.write(f"**Shop Jobs:** {len(st.session_state.job_descriptions)} defined")
 
 # Footer
