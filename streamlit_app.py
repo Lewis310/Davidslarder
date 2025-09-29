@@ -14,6 +14,13 @@ st.set_page_config(
     layout="wide"
 )
 
+# Custom JSON encoder to handle datetime objects
+class DateTimeEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        return super().default(obj)
+
 # Data persistence functions
 def save_data():
     """Save all session data to JSON file"""
@@ -22,8 +29,14 @@ def save_data():
         orders_serializable = []
         for order in st.session_state.orders:
             order_copy = order.copy()
-            if isinstance(order_copy['due_date'], datetime):
+            # Handle due_date
+            if 'due_date' in order_copy and isinstance(order_copy['due_date'], datetime):
                 order_copy['due_date'] = order_copy['due_date'].isoformat()
+            
+            # Handle created_date
+            if 'created_date' in order_copy and isinstance(order_copy['created_date'], datetime):
+                order_copy['created_date'] = order_copy['created_date'].isoformat()
+            
             orders_serializable.append(order_copy)
         
         data = {
@@ -34,8 +47,9 @@ def save_data():
             'job_descriptions': st.session_state.job_descriptions,
             'worker_colors': st.session_state.worker_colors
         }
+        
         with open('davids_larder_data.json', 'w') as f:
-            json.dump(data, f, indent=2)
+            json.dump(data, f, cls=DateTimeEncoder, indent=2)
         return True
     except Exception as e:
         st.error(f"Error saving data: {e}")
@@ -51,7 +65,17 @@ def load_data():
             # Convert date strings back to datetime objects
             for order in data.get('orders', []):
                 if 'due_date' in order and isinstance(order['due_date'], str):
-                    order['due_date'] = datetime.fromisoformat(order['due_date'])
+                    try:
+                        order['due_date'] = datetime.fromisoformat(order['due_date'])
+                    except ValueError:
+                        # If ISO format fails, try other formats or set to now
+                        order['due_date'] = datetime.now()
+                
+                if 'created_date' in order and isinstance(order['created_date'], str):
+                    try:
+                        order['created_date'] = datetime.fromisoformat(order['created_date'])
+                    except ValueError:
+                        order['created_date'] = datetime.now()
             
             return data
         except Exception as e:
@@ -395,6 +419,15 @@ if st.sidebar.button("💾 Save All Data"):
         st.sidebar.success("Data saved successfully!")
     else:
         st.sidebar.error("Failed to save data")
+
+# Add data reset option
+st.sidebar.markdown("---")
+st.sidebar.subheader("Data Management")
+if st.sidebar.button("🔄 Reset Data File"):
+    if os.path.exists('davids_larder_data.json'):
+        os.remove('davids_larder_data.json')
+        st.sidebar.success("Data file reset! Please refresh the page.")
+        st.stop()
 
 # Enhanced Timetable & Rostering Page
 if page == "Timetable & Rostering":
