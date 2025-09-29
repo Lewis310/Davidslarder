@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import datetime
 import json
+import os
 from datetime import datetime, timedelta
 import uuid
 
@@ -12,141 +13,237 @@ st.set_page_config(
     layout="wide"
 )
 
-# Initialize session state
-if 'workers' not in st.session_state:
-    st.session_state.workers = [
-        {
-            'id': 1,
-            'name': 'John MacLeod',
-            'position': 'Butcher',
-            'availability': ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
-            'unavailable_dates': [],
-            'hours_per_week': 40,
-            'skills': ['meat_cutting', 'customer_service', 'ordering']
-        },
-        {
-            'id': 2,
-            'name': 'Sarah Campbell',
-            'position': 'Shop Assistant',
-            'availability': ['Tuesday', 'Wednesday', 'Thursday', 'Saturday'],
-            'unavailable_dates': [],
-            'hours_per_week': 30,
-            'skills': ['customer_service', 'packaging', 'cleaning']
-        },
-        {
-            'id': 3,
-            'name': 'Michael Fraser',
-            'position': 'Butcher',
-            'availability': ['Monday', 'Wednesday', 'Friday', 'Saturday'],
-            'unavailable_dates': [],
-            'hours_per_week': 35,
-            'skills': ['meat_cutting', 'preparation', 'quality_control']
+# Data persistence functions
+def save_data():
+    """Save all session data to JSON file"""
+    try:
+        # Convert datetime objects to strings for JSON serialization
+        orders_serializable = []
+        for order in st.session_state.orders:
+            order_copy = order.copy()
+            if isinstance(order_copy['due_date'], datetime):
+                order_copy['due_date'] = order_copy['due_date'].isoformat()
+            orders_serializable.append(order_copy)
+        
+        data = {
+            'workers': st.session_state.workers,
+            'orders': orders_serializable,
+            'timetable': st.session_state.timetable,
+            'shop_jobs': st.session_state.shop_jobs,
+            'job_descriptions': st.session_state.job_descriptions
         }
-    ]
+        with open('davids_larder_data.json', 'w') as f:
+            json.dump(data, f, indent=2)
+        return True
+    except Exception as e:
+        st.error(f"Error saving data: {e}")
+        return False
 
-if 'orders' not in st.session_state:
-    st.session_state.orders = [
-        {
-            'order_id': 'ORD001',
-            'customer_name': 'Highland Hotel',
-            'items': ['10kg Pork Shoulder', '5kg Beef Mince', '3 Whole Chickens'],
-            'due_date': datetime.now() + timedelta(days=2),
-            'status': 'Pending'
-        },
-        {
-            'order_id': 'ORD002',
-            'customer_name': 'Local Cafe',
-            'items': ['15kg Sausages', '8kg Bacon'],
-            'due_date': datetime.now() + timedelta(days=5),
-            'status': 'Pending'
-        }
-    ]
+def load_data():
+    """Load data from JSON file"""
+    if os.path.exists('davids_larder_data.json'):
+        try:
+            with open('davids_larder_data.json', 'r') as f:
+                data = json.load(f)
+            
+            # Convert date strings back to datetime objects
+            for order in data.get('orders', []):
+                if 'due_date' in order and isinstance(order['due_date'], str):
+                    order['due_date'] = datetime.fromisoformat(order['due_date'])
+            
+            return data
+        except Exception as e:
+            st.error(f"Error loading data: {e}")
+    return None
 
-if 'timetable' not in st.session_state:
-    st.session_state.timetable = {}
-
-if 'shop_jobs' not in st.session_state:
-    st.session_state.shop_jobs = {
-        'Monday': {
-            'morning': ['meat_preparation', 'display_setup', 'order_receiving'],
-            'afternoon': ['customer_service', 'cleaning', 'inventory_check'],
-            'evening': ['closing_duties', 'equipment_cleaning']
+# Initialize session state with persisted data
+def initialize_session_state():
+    """Initialize session state with saved data or defaults"""
+    defaults = {
+        'workers': [
+            {
+                'id': 1,
+                'name': 'John MacLeod',
+                'position': 'Butcher',
+                'availability': ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
+                'unavailable_dates': [],
+                'hours_per_week': 40,
+                'skills': ['meat_cutting', 'customer_service', 'ordering']
+            },
+            {
+                'id': 2,
+                'name': 'Sarah Campbell',
+                'position': 'Shop Assistant',
+                'availability': ['Tuesday', 'Wednesday', 'Thursday', 'Saturday'],
+                'unavailable_dates': [],
+                'hours_per_week': 30,
+                'skills': ['customer_service', 'packaging', 'cleaning']
+            },
+            {
+                'id': 3,
+                'name': 'Michael Fraser',
+                'position': 'Butcher',
+                'availability': ['Monday', 'Wednesday', 'Friday', 'Saturday'],
+                'unavailable_dates': [],
+                'hours_per_week': 35,
+                'skills': ['meat_cutting', 'preparation', 'quality_control']
+            }
+        ],
+        'orders': [
+            {
+                'order_id': 'ORD001',
+                'customer_name': 'Highland Hotel',
+                'items': ['10kg Pork Shoulder', '5kg Beef Mince', '3 Whole Chickens'],
+                'due_date': datetime.now() + timedelta(days=2),
+                'status': 'Pending',
+                'priority': 'High',
+                'created_date': datetime.now() - timedelta(days=1)
+            },
+            {
+                'order_id': 'ORD002',
+                'customer_name': 'Local Cafe',
+                'items': ['15kg Sausages', '8kg Bacon'],
+                'due_date': datetime.now() + timedelta(days=5),
+                'status': 'In Progress',
+                'priority': 'Medium',
+                'created_date': datetime.now() - timedelta(days=2)
+            }
+        ],
+        'timetable': {},
+        'shop_jobs': {
+            'Monday': {
+                'morning': ['meat_preparation', 'display_setup', 'order_receiving'],
+                'afternoon': ['customer_service', 'cleaning', 'inventory_check'],
+                'evening': ['closing_duties', 'equipment_cleaning']
+            },
+            'Tuesday': {
+                'morning': ['butchery_work', 'display_refresh', 'supplier_meeting'],
+                'afternoon': ['customer_service', 'special_orders', 'training'],
+                'evening': ['closing_duties', 'waste_management']
+            },
+            'Wednesday': {
+                'morning': ['bulk_preparation', 'quality_checks', 'marketing_prep'],
+                'afternoon': ['customer_service', 'online_orders', 'cleaning'],
+                'evening': ['closing_duties', 'weekly_ordering']
+            },
+            'Thursday': {
+                'morning': ['specialty_cuts', 'display_setup', 'supplier_delivery'],
+                'afternoon': ['customer_service', 'event_preparation', 'staff_meeting'],
+                'evening': ['closing_duties', 'deep_cleaning']
+            },
+            'Friday': {
+                'morning': ['weekend_prep', 'bulk_butchery', 'display_setup'],
+                'afternoon': ['customer_service', 'rush_hours', 'quality_control'],
+                'evening': ['closing_duties', 'weekly_review']
+            },
+            'Saturday': {
+                'morning': ['opening_duties', 'fresh_display', 'customer_service'],
+                'afternoon': ['busy_shift', 'quick_restock', 'customer_service'],
+                'evening': ['early_closing', 'weekly_cleanup']
+            },
+            'Sunday': {
+                'morning': ['closed'],
+                'afternoon': ['closed'],
+                'evening': ['closed']
+            }
         },
-        'Tuesday': {
-            'morning': ['butchery_work', 'display_refresh', 'supplier_meeting'],
-            'afternoon': ['customer_service', 'special_orders', 'training'],
-            'evening': ['closing_duties', 'waste_management']
-        },
-        'Wednesday': {
-            'morning': ['bulk_preparation', 'quality_checks', 'marketing_prep'],
-            'afternoon': ['customer_service', 'online_orders', 'cleaning'],
-            'evening': ['closing_duties', 'weekly_ordering']
-        },
-        'Thursday': {
-            'morning': ['specialty_cuts', 'display_setup', 'supplier_delivery'],
-            'afternoon': ['customer_service', 'event_preparation', 'staff_meeting'],
-            'evening': ['closing_duties', 'deep_cleaning']
-        },
-        'Friday': {
-            'morning': ['weekend_prep', 'bulk_butchery', 'display_setup'],
-            'afternoon': ['customer_service', 'rush_hours', 'quality_control'],
-            'evening': ['closing_duties', 'weekly_review']
-        },
-        'Saturday': {
-            'morning': ['opening_duties', 'fresh_display', 'customer_service'],
-            'afternoon': ['busy_shift', 'quick_restock', 'customer_service'],
-            'evening': ['early_closing', 'weekly_cleanup']
-        },
-        'Sunday': {
-            'morning': ['closed'],
-            'afternoon': ['closed'],
-            'evening': ['closed']
+        'job_descriptions': {
+            'meat_preparation': 'Preparing daily meat cuts and portions for display',
+            'display_setup': 'Setting up attractive meat displays in shop front',
+            'order_receiving': 'Receiving and processing supplier deliveries',
+            'customer_service': 'Assisting customers, taking orders, handling payments',
+            'cleaning': 'Maintaining cleanliness standards throughout shop',
+            'inventory_check': 'Checking stock levels and recording inventory',
+            'closing_duties': 'Securing shop, cash handling, end-of-day procedures',
+            'equipment_cleaning': 'Deep cleaning of butchery equipment',
+            'butchery_work': 'Primary butchery work on larger cuts',
+            'display_refresh': 'Refreshing and rotating display items',
+            'supplier_meeting': 'Meeting with meat suppliers',
+            'special_orders': 'Handling custom orders and special requests',
+            'training': 'Staff training and skill development',
+            'bulk_preparation': 'Preparing bulk orders for restaurants/hotels',
+            'quality_checks': 'Quality control on all meat products',
+            'marketing_prep': 'Preparing for promotions and marketing',
+            'online_orders': 'Processing and packing online orders',
+            'weekly_ordering': 'Placing weekly orders with suppliers',
+            'specialty_cuts': 'Creating specialty cuts and value-added products',
+            'event_preparation': 'Preparing for local events/festivals',
+            'staff_meeting': 'Weekly staff coordination meeting',
+            'deep_cleaning': 'Thorough cleaning of entire shop',
+            'weekend_prep': 'Extra preparation for busy weekend trade',
+            'bulk_butchery': 'Butchery work for weekend demand',
+            'rush_hours': 'Extra staff during busy periods',
+            'weekly_review': 'Reviewing week performance and planning',
+            'opening_duties': 'Morning opening procedures',
+            'fresh_display': 'Setting up fresh daily displays',
+            'busy_shift': 'Handling Saturday customer volume',
+            'quick_restock': 'Rapid restocking during busy periods',
+            'early_closing': 'Saturday early closing procedures',
+            'weekly_cleanup': 'Major weekly cleaning',
+            'waste_management': 'Managing food waste and recycling'
         }
     }
+    
+    # Load saved data or use defaults
+    saved_data = load_data()
+    
+    for key, default_value in defaults.items():
+        if key not in st.session_state:
+            if saved_data and key in saved_data:
+                st.session_state[key] = saved_data[key]
+            else:
+                st.session_state[key] = default_value
 
-if 'job_descriptions' not in st.session_state:
-    st.session_state.job_descriptions = {
-        'meat_preparation': 'Preparing daily meat cuts and portions for display',
-        'display_setup': 'Setting up attractive meat displays in shop front',
-        'order_receiving': 'Receiving and processing supplier deliveries',
-        'customer_service': 'Assisting customers, taking orders, handling payments',
-        'cleaning': 'Maintaining cleanliness standards throughout shop',
-        'inventory_check': 'Checking stock levels and recording inventory',
-        'closing_duties': 'Securing shop, cash handling, end-of-day procedures',
-        'equipment_cleaning': 'Deep cleaning of butchery equipment',
-        'butchery_work': 'Primary butchery work on larger cuts',
-        'display_refresh': 'Refreshing and rotating display items',
-        'supplier_meeting': 'Meeting with meat suppliers',
-        'special_orders': 'Handling custom orders and special requests',
-        'training': 'Staff training and skill development',
-        'bulk_preparation': 'Preparing bulk orders for restaurants/hotels',
-        'quality_checks': 'Quality control on all meat products',
-        'marketing_prep': 'Preparing for promotions and marketing',
-        'online_orders': 'Processing and packing online orders',
-        'weekly_ordering': 'Placing weekly orders with suppliers',
-        'specialty_cuts': 'Creating specialty cuts and value-added products',
-        'event_preparation': 'Preparing for local events/festivals',
-        'staff_meeting': 'Weekly staff coordination meeting',
-        'deep_cleaning': 'Thorough cleaning of entire shop',
-        'weekend_prep': 'Extra preparation for busy weekend trade',
-        'bulk_butchery': 'Butchery work for weekend demand',
-        'rush_hours': 'Extra staff during busy periods',
-        'weekly_review': 'Reviewing week performance and planning',
-        'opening_duties': 'Morning opening procedures',
-        'fresh_display': 'Setting up fresh daily displays',
-        'busy_shift': 'Handling Saturday customer volume',
-        'quick_restock': 'Rapid restocking during busy periods',
-        'early_closing': 'Saturday early closing procedures',
-        'weekly_cleanup': 'Major weekly cleaning',
-        'waste_management': 'Managing food waste and recycling'
-    }
+# Initialize the session state
+initialize_session_state()
 
-# Main title
-st.title("🥩 David's Larder - Management System")
+# Enhanced functions with auto-save
+def add_worker(worker_data):
+    st.session_state.workers.append(worker_data)
+    save_data()
 
-# Sidebar for navigation
-st.sidebar.title("Navigation")
-page = st.sidebar.radio("Go to", ["Timetable & Rostering", "Worker Management", "Order Management", "New Order", "Shop Jobs"])
+def remove_worker(worker_id):
+    st.session_state.workers = [w for w in st.session_state.workers if w['id'] != worker_id]
+    save_data()
+
+def add_order(order_data):
+    st.session_state.orders.append(order_data)
+    save_data()
+
+def update_order_status(order_id, status):
+    for order in st.session_state.orders:
+        if order['order_id'] == order_id:
+            order['status'] = status
+            break
+    save_data()
+
+def remove_order(order_id):
+    st.session_state.orders = [o for o in st.session_state.orders if o['order_id'] != order_id]
+    save_data()
+
+def update_order_priority(order_id, priority):
+    for order in st.session_state.orders:
+        if order['order_id'] == order_id:
+            order['priority'] = priority
+            break
+    save_data()
+
+def update_timetable(week_key, day, time_slot, worker_id, action='add'):
+    if week_key not in st.session_state.timetable:
+        st.session_state.timetable[week_key] = {}
+    if day not in st.session_state.timetable[week_key]:
+        st.session_state.timetable[week_key][day] = {}
+    if time_slot not in st.session_state.timetable[week_key][day]:
+        st.session_state.timetable[week_key][day][time_slot] = []
+    
+    if action == 'add':
+        if worker_id not in st.session_state.timetable[week_key][day][time_slot]:
+            st.session_state.timetable[week_key][day][time_slot].append(worker_id)
+    elif action == 'remove':
+        if worker_id in st.session_state.timetable[week_key][day][time_slot]:
+            st.session_state.timetable[week_key][day][time_slot].remove(worker_id)
+    
+    save_data()
 
 # Helper function to create time slots
 def create_time_slots():
@@ -156,6 +253,21 @@ def create_time_slots():
             time_str = f"{hour:02d}:{minute:02d}"
             times.append(time_str)
     return times
+
+# Main title
+st.title("🥩 David's Larder - Management System")
+
+# Sidebar for navigation
+st.sidebar.title("Navigation")
+page = st.sidebar.radio("Go to", ["Timetable & Rostering", "Worker Management", "Order Management", "New Order", "Shop Jobs"])
+
+# Add save button to sidebar
+st.sidebar.markdown("---")
+if st.sidebar.button("💾 Save All Data"):
+    if save_data():
+        st.sidebar.success("Data saved successfully!")
+    else:
+        st.sidebar.error("Failed to save data")
 
 # Enhanced Timetable & Rostering Page
 if page == "Timetable & Rostering":
@@ -232,13 +344,12 @@ if page == "Timetable & Rostering":
                 # Assign worker to all time slots in the shift
                 for i in range(start_idx, end_idx + 1):
                     current_slot = time_slots[i]
-                    if worker['id'] not in st.session_state.timetable[week_key][selected_day][current_slot]:
-                        st.session_state.timetable[week_key][selected_day][current_slot].append(worker['id'])
+                    update_timetable(week_key, selected_day, current_slot, worker['id'], 'add')
                 
                 st.success(f"Assigned {worker_name} to {selected_day} from {start_time} to {end_time}")
                 st.rerun()
 
-# Worker Management Page (unchanged from previous)
+# Worker Management Page
 elif page == "Worker Management":
     st.header("👥 Worker Management")
     
@@ -270,7 +381,7 @@ elif page == "Worker Management":
                     'hours_per_week': hours,
                     'skills': selected_skills
                 }
-                st.session_state.workers.append(new_worker)
+                add_worker(new_worker)
                 st.success(f"Added {new_name} to workers!")
     
     # Display current workers
@@ -284,10 +395,208 @@ elif page == "Worker Management":
                 st.write(f"**Skills:** {', '.join(worker.get('skills', []))}")
             with col2:
                 if st.button(f"Remove {worker['name']}", key=f"remove_{worker['id']}"):
-                    st.session_state.workers = [w for w in st.session_state.workers if w['id'] != worker['id']]
+                    remove_worker(worker['id'])
                     st.rerun()
 
-# Shop Jobs Page
+# FIXED Order Management Page
+elif page == "Order Management":
+    st.header("📋 Order Management")
+    
+    # Order filtering and sorting
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        status_filter = st.selectbox("Filter by Status", 
+                                   ["All", "Pending", "In Progress", "Completed", "Cancelled"])
+    with col2:
+        priority_filter = st.selectbox("Filter by Priority", 
+                                     ["All", "High", "Medium", "Low"])
+    with col3:
+        sort_by = st.selectbox("Sort by", 
+                             ["Due Date (Ascending)", "Due Date (Descending)", "Priority", "Date Created"])
+    
+    # Filter orders
+    filtered_orders = st.session_state.orders.copy()
+    
+    if status_filter != "All":
+        filtered_orders = [o for o in filtered_orders if o['status'] == status_filter]
+    
+    if priority_filter != "All":
+        filtered_orders = [o for o in filtered_orders if o.get('priority', 'Medium') == priority_filter]
+    
+    # Sort orders
+    if sort_by == "Due Date (Ascending)":
+        filtered_orders.sort(key=lambda x: x['due_date'])
+    elif sort_by == "Due Date (Descending)":
+        filtered_orders.sort(key=lambda x: x['due_date'], reverse=True)
+    elif sort_by == "Priority":
+        priority_order = {'High': 1, 'Medium': 2, 'Low': 3}
+        filtered_orders.sort(key=lambda x: priority_order.get(x.get('priority', 'Medium'), 2))
+    elif sort_by == "Date Created":
+        filtered_orders.sort(key=lambda x: x.get('created_date', x['due_date']))
+    
+    # Display orders
+    st.subheader(f"Orders ({len(filtered_orders)} found)")
+    
+    if not filtered_orders:
+        st.info("No orders found matching your filters.")
+    else:
+        for order in filtered_orders:
+            # Calculate days until due
+            days_until = (order['due_date'] - datetime.now()).days
+            if days_until < 0:
+                status_text = f"⚠️ OVERDUE by {abs(days_until)} days"
+                status_color = "red"
+            elif days_until == 0:
+                status_text = "📅 Due Today"
+                status_color = "orange"
+            elif days_until <= 2:
+                status_text = f"⏰ Due in {days_until} days"
+                status_color = "orange"
+            else:
+                status_text = f"✅ Due in {days_until} days"
+                status_color = "green"
+            
+            # Status badge with color
+            status_badge = {
+                'Pending': '🟡',
+                'In Progress': '🔵', 
+                'Completed': '🟢',
+                'Cancelled': '🔴'
+            }.get(order['status'], '⚪')
+            
+            # Priority badge
+            priority_badge = {
+                'High': '🔴',
+                'Medium': '🟡',
+                'Low': '🟢'
+            }.get(order.get('priority', 'Medium'), '⚪')
+            
+            with st.expander(f"{priority_badge} {status_badge} Order {order['order_id']} - {order['customer_name']}"):
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    st.write(f"**Customer:** {order['customer_name']}")
+                    st.write(f"**Due Date:** {order['due_date'].strftime('%A, %d %b %Y')}")
+                    st.write(f"**Status:** {status_text}")
+                    st.markdown(f"<span style='color: {status_color}'><strong>{status_text}</strong></span>", 
+                              unsafe_allow_html=True)
+                
+                with col2:
+                    st.write("**Items:**")
+                    for item in order['items']:
+                        st.write(f"• {item}")
+                    
+                    if order.get('created_date'):
+                        st.write(f"**Created:** {order['created_date'].strftime('%d %b %Y')}")
+                
+                with col3:
+                    st.write(f"**Priority:** {order.get('priority', 'Medium')}")
+                    st.write(f"**Status:** {order['status']}")
+                    
+                    # Status update
+                    new_status = st.selectbox(
+                        "Update Status", 
+                        ["Pending", "In Progress", "Completed", "Cancelled"],
+                        index=["Pending", "In Progress", "Completed", "Cancelled"].index(order['status']),
+                        key=f"status_{order['order_id']}"
+                    )
+                    
+                    if new_status != order['status']:
+                        if st.button("Update Status", key=f"update_status_{order['order_id']}"):
+                            update_order_status(order['order_id'], new_status)
+                            st.rerun()
+                    
+                    # Priority update
+                    new_priority = st.selectbox(
+                        "Update Priority",
+                        ["High", "Medium", "Low"],
+                        index=["High", "Medium", "Low"].index(order.get('priority', 'Medium')),
+                        key=f"priority_{order['order_id']}"
+                    )
+                    
+                    if new_priority != order.get('priority', 'Medium'):
+                        if st.button("Update Priority", key=f"update_priority_{order['order_id']}"):
+                            update_order_priority(order['order_id'], new_priority)
+                            st.rerun()
+                    
+                    # Delete order
+                    if st.button("🗑️ Delete Order", key=f"delete_{order['order_id']}"):
+                        remove_order(order['order_id'])
+                        st.rerun()
+        
+        # Order statistics
+        st.subheader("Order Statistics")
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            total_orders = len(st.session_state.orders)
+            st.metric("Total Orders", total_orders)
+        
+        with col2:
+            pending_orders = len([o for o in st.session_state.orders if o['status'] == 'Pending'])
+            st.metric("Pending Orders", pending_orders)
+        
+        with col3:
+            overdue_orders = len([o for o in st.session_state.orders if o['due_date'] < datetime.now() and o['status'] in ['Pending', 'In Progress']])
+            st.metric("Overdue Orders", overdue_orders)
+        
+        with col4:
+            high_priority = len([o for o in st.session_state.orders if o.get('priority') == 'High' and o['status'] in ['Pending', 'In Progress']])
+            st.metric("High Priority", high_priority)
+
+# New Order Page
+elif page == "New Order":
+    st.header("🛒 New Customer Order")
+    
+    with st.form("new_order"):
+        col1, col2 = st.columns(2)
+        with col1:
+            customer_name = st.text_input("Customer Name", placeholder="e.g., Highland Hotel")
+            due_date = st.date_input("Due Date", datetime.now() + timedelta(days=7))
+        with col2:
+            # Generate order ID automatically
+            existing_ids = [int(o['order_id'][3:]) for o in st.session_state.orders if o['order_id'].startswith('ORD') and o['order_id'][3:].isdigit()]
+            next_id = max(existing_ids) + 1 if existing_ids else 1
+            order_id = st.text_input("Order ID", value=f"ORD{next_id:03d}", disabled=True)
+            
+            priority = st.selectbox("Priority", ["Low", "Medium", "High"])
+        
+        st.subheader("Order Items")
+        items = st.text_area("Items (one per line)", 
+                           placeholder="5kg Beef Mince\n3 Whole Chickens\n2kg Pork Sausages\n...",
+                           height=150)
+        
+        notes = st.text_area("Additional Notes", placeholder="Any special instructions or requirements...")
+        
+        if st.form_submit_button("Create Order"):
+            if customer_name and items:
+                item_list = [item.strip() for item in items.split('\n') if item.strip()]
+                
+                new_order = {
+                    'order_id': order_id,
+                    'customer_name': customer_name,
+                    'items': item_list,
+                    'due_date': datetime.combine(due_date, datetime.min.time()),
+                    'status': 'Pending',
+                    'priority': priority,
+                    'created_date': datetime.now(),
+                    'notes': notes if notes else None
+                }
+                add_order(new_order)
+                st.success(f"✅ Order {order_id} created for {customer_name}!")
+                
+                # Show summary
+                st.info(f"""
+                **Order Summary:**
+                - **Order ID:** {order_id}
+                - **Customer:** {customer_name}
+                - **Due Date:** {due_date.strftime('%A, %d %b %Y')}
+                - **Priority:** {priority}
+                - **Items:** {len(item_list)}
+                - **Status:** Pending
+                """)
+
+# Shop Jobs Page (unchanged from previous)
 elif page == "Shop Jobs":
     st.header("🏪 Daily Shop Jobs & Tasks")
     
@@ -325,6 +634,7 @@ elif page == "Shop Jobs":
                         st.session_state.shop_jobs[modify_day][time_period] = []
                     st.session_state.shop_jobs[modify_day][time_period].append(job_key)
                     st.session_state.job_descriptions[job_key] = new_description
+                    save_data()
                     st.success(f"Added {new_job} to {modify_day} {time_period}")
             
             else:
@@ -333,6 +643,7 @@ elif page == "Shop Jobs":
                     job_to_remove = st.selectbox("Select Job to Remove", existing_jobs)
                     if st.button("Remove Job"):
                         st.session_state.shop_jobs[modify_day][time_period].remove(job_to_remove)
+                        save_data()
                         st.success(f"Removed {job_to_remove} from {modify_day} {time_period}")
     
     with tab3:
@@ -341,20 +652,15 @@ elif page == "Shop Jobs":
             with st.expander(job.replace('_', ' ').title()):
                 st.write(description)
 
-# Order Management and New Order pages remain the same as previous version
-# ... (include the Order Management and New Order code from previous version here)
-
-# Enhanced LLM Chat Bot Section with shop job knowledge
+# Enhanced LLM Chat Bot Section
 st.sidebar.markdown("---")
 st.sidebar.header("💬 David's Larder Assistant")
 
-# Simple chat interface
 user_input = st.sidebar.text_input("Ask about workers, timetables, orders, or shop jobs:")
 
 if user_input:
     user_input_lower = user_input.lower()
     
-    # Enhanced response logic with shop job knowledge
     if any(word in user_input_lower for word in ['worker', 'staff', 'employee']):
         worker_names = [worker['name'] for worker in st.session_state.workers]
         st.sidebar.write(f"**Assistant:** We have {len(worker_names)} workers: {', '.join(worker_names)}")
@@ -363,12 +669,18 @@ if user_input:
         st.sidebar.write("**Assistant:** You can view and manage the detailed timetable with specific time slots in the 'Timetable & Rostering' section.")
     
     elif any(word in user_input_lower for word in ['order', 'delivery']):
-        pending_orders = [o for o in st.session_state.orders if o['status'] == 'Pending']
+        pending_orders = [o for o in st.session_state.orders if o['status'] in ['Pending', 'In Progress']]
         if pending_orders:
-            next_order = pending_orders[0]
-            st.sidebar.write(f"**Assistant:** We have {len(pending_orders)} pending orders. Next: {next_order['order_id']} for {next_order['customer_name']} due {next_order['due_date'].strftime('%A')}.")
+            # Find most urgent order
+            urgent_orders = [o for o in pending_orders if o['due_date'] <= datetime.now() + timedelta(days=2)]
+            if urgent_orders:
+                next_order = urgent_orders[0]
+                st.sidebar.write(f"**Assistant:** ⚠️ {len(urgent_orders)} urgent orders! Next: {next_order['order_id']} for {next_order['customer_name']} due {next_order['due_date'].strftime('%A')}.")
+            else:
+                next_order = pending_orders[0]
+                st.sidebar.write(f"**Assistant:** We have {len(pending_orders)} active orders. Next: {next_order['order_id']} for {next_order['customer_name']} due {next_order['due_date'].strftime('%A')}.")
         else:
-            st.sidebar.write("**Assistant:** No pending orders at the moment.")
+            st.sidebar.write("**Assistant:** No active orders at the moment.")
     
     elif any(word in user_input_lower for word in ['job', 'task', 'work', 'duty']):
         if 'today' in user_input_lower:
@@ -378,27 +690,18 @@ if user_input:
             for period, jobs in jobs_today.items():
                 response += f"\n{period.title()}: {', '.join([j.replace('_', ' ').title() for j in jobs])}"
             st.sidebar.write(response)
-        elif any(day in user_input_lower for day in ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']):
-            for day in ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']:
-                if day in user_input_lower:
-                    jobs_day = st.session_state.shop_jobs.get(day.capitalize(), {})
-                    response = f"**Assistant:** {day.capitalize()}'s jobs:\n"
-                    for period, jobs in jobs_day.items():
-                        response += f"\n{period.title()}: {', '.join([j.replace('_', ' ').title() for j in jobs])}"
-                    st.sidebar.write(response)
-                    break
         else:
             st.sidebar.write("**Assistant:** I can tell you about daily shop jobs. Ask about specific days or 'today's jobs'. You can also modify jobs in the 'Shop Jobs' section.")
     
     else:
-        st.sidebar.write("**Assistant:** I can help you with worker management, timetables, orders, and daily shop jobs. Try asking about today's tasks or worker schedules.")
+        st.sidebar.write("**Assistant:** I can help you with worker management, timetables, orders, and daily shop jobs. Try asking about today's tasks or urgent orders.")
 
 # Quick stats in sidebar
 st.sidebar.markdown("---")
 st.sidebar.subheader("Quick Stats")
 st.sidebar.write(f"**Workers:** {len(st.session_state.workers)}")
-st.sidebar.write(f"**Pending Orders:** {len([o for o in st.session_state.orders if o['status'] == 'Pending'])}")
-st.sidebar.write(f"**Shop Jobs:** {len(st.session_state.job_descriptions)} defined")
+st.sidebar.write(f"**Active Orders:** {len([o for o in st.session_state.orders if o['status'] in ['Pending', 'In Progress']])}")
+st.sidebar.write(f"**Overdue:** {len([o for o in st.session_state.orders if o['due_date'] < datetime.now() and o['status'] in ['Pending', 'In Progress']])}")
 
 # Footer
 st.sidebar.markdown("---")
